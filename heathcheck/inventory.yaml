@@ -1,0 +1,39 @@
+all:
+  children:
+    HDC1:
+      children:
+        AMK_SHS:
+          hosts:
+            Host1:
+              ansible_host: 13.233.165.166
+              ansible_user: ec2-user
+            Host2:
+              ansible_host: 13.229.249.134
+              ansible_user: ec2-user
+        AMK_NHG:
+          hosts:
+            Host3:
+              ansible_host: 13.233.165.166
+              ansible_user: ec2-user
+        AMK_CS:
+          hosts:
+            Host5:
+              ansible_host: 13.233.165.166
+              ansible_user: ec2-user
+    HDC2:
+      children:
+        AMK_SHS:
+          hosts:
+            Host4:
+              ansible_host: 13.233.165.166
+              ansible_user: ec2-user
+        AMK_NHG:
+          hosts:
+            Host6:
+              ansible_host: 13.233.165.166
+              ansible_user: ec2-user
+        AMK_CS:
+          hosts:
+            Host7:
+              ansible_host: 13.233.165.166
+              ansible_user: ec2-user

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Health Check Report</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background-color: #f5f5f5; 
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background-color: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+        }
+        .header { 
+            text-align: center; 
+            margin-bottom: 30px; 
+            border-bottom: 2px solid #e0e0e0; 
+            padding-bottom: 15px; 
+        }
+        .status-pass { color: #28a745; font-weight: bold; }
+        .status-fail { color: #dc3545; font-weight: bold; }
+        .group-section { margin-bottom: 25px; }
+        .group-title { 
+            font-size: 1.4em; 
+            font-weight: bold; 
+            margin-bottom: 10px; 
+            padding: 10px; 
+            background-color: #f8f9fa; 
+            border-left: 4px solid #007bff; 
+        }
+        .subgroup { 
+            margin-left: 20px; 
+            margin-bottom: 15px; 
+        }
+        .subgroup-toggle { 
+            cursor: pointer; 
+            padding: 8px 12px; 
+            background-color: #e9ecef; 
+            border: 1px solid #dee2e6; 
+            border-radius: 4px; 
+            margin-bottom: 5px; 
+            user-select: none; 
+        }
+        .subgroup-toggle:hover { background-color: #dee2e6; }
+        .subgroup-content { 
+            display: none; 
+            margin-left: 20px; 
+            padding: 10px; 
+            border-left: 2px solid #dee2e6; 
+        }
+        .subgroup-content.show { display: block; }
+        .device { 
+            margin-bottom: 15px; 
+            padding: 10px; 
+            background-color: #f8f9fa; 
+            border-radius: 4px; 
+        }
+        .device-name { 
+            font-weight: bold; 
+            font-size: 1.1em; 
+            margin-bottom: 5px; 
+        }
+        .device-border { 
+            display: inline-block;
+            padding: 2px 6px;
+            border: 2px solid #f19f06ff;
+            border-radius: 6px;
+            background-color: #eaffea;
+            font-weight: bold;">• 
+        }
+        .metric { 
+            margin: 3px 0; 
+            font-size: 0.95em; 
+        }
+        .inventory-section { 
+            margin-bottom: 30px; 
+            padding: 15px; 
+            background-color: #f8f9fa; 
+            border-radius: 4px; 
+        }
+        .expand-all-btn { 
+            margin-bottom: 20px; 
+            padding: 8px 16px; 
+            background-color: #007bff; 
+            color: white; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer; 
+        }
+        .expand-all-btn:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>F5 Health Check Report</h1>
+            
+            <!-- Overall Status Calculation (your existing logic) -->
+            {% set overall_ns = namespace(failed=false) %}
+            {% for group in report.groups %}
+                {% for subgroup in group.subgroups %}
+                    {% for device in subgroup.devices %}
+                        {% if device.cpu | int > cpu_threshold or device.memory | int > memory_threshold or device.disk_space | int > disk_threshold or device.uptime_avail != 'Up' %}
+                            {% set overall_ns.failed = true %}
+                        {% endif %}
+                    {% endfor %}
+                {% endfor %}
+            {% endfor %}
+            
+            <h2>Overall Status: 
+                <span class="{{ 'status-fail' if overall_ns.failed else 'status-pass' }}">
+                    {{ 'Fail' if overall_ns.failed else 'Pass' }}
+                </span>
+            </h2>
+            <p><strong>Report generated:</strong> {{ report.timestamp }}</p>
+        </div>
+
+        <!-- Detailed Health Metrics -->
+        <div>
+            <h2>Detailed Health Metrics</h2>
+            <button class="expand-all-btn" onclick="toggleAll()">Expand/Collapse All</button>
+            
+            {% for group in report.groups %}
+                <!-- Group Status Calculation (your existing logic) -->
+                {% set group_ns = namespace(failed=false) %}
+                {% for subgroup in group.subgroups %}
+                    {% set subgroup_ns = namespace(failed=false) %}
+                    {% for device in subgroup.devices %}
+                        {% if device.status | trim | lower == 'fail' %}
+                            {% set subgroup_ns.failed = true %}
+                        {% endif %}
+                    {% endfor %}
+                    {% if subgroup_ns.failed %}
+                        {% set group_ns.failed = true %}
+                    {% endif %}
+                {% endfor %}
+                
+                <div class="group-section">
+                    <div class="group-title">
+                        {{ group.name }}: 
+                        <span class="{{ 'status-fail' if group_ns.failed else 'status-pass' }}">
+                            {{ 'Fail' if group_ns.failed else 'Pass' }}
+                        </span>
+                    </div>
+                    
+                    {% for subgroup in group.subgroups %}
+                        <!-- Subgroup Status Calculation (your existing logic) -->
+                        {% set subgroup_ns = namespace(failed=false) %}
+                        {% for device in subgroup.devices %}
+                            {% if device.status | trim | lower == 'fail' %}
+                                {% set subgroup_ns.failed = true %}
+                            {% endif %}
+                        {% endfor %}
+                        
+                        <div class="subgroup">
+                            <div class="subgroup-toggle" onclick="toggleSubgroup('{{ group.name }}_{{ subgroup.name }}')">
+                                <strong>{{ subgroup.name }}:</strong> 
+                                <span class="{{ 'status-fail' if subgroup_ns.failed else 'status-pass' }}">
+                                    {{ 'Fail' if subgroup_ns.failed else 'Pass' }}
+                                </span>
+                                <span style="float: right;">{{ '▲' if subgroup_ns.failed else '▼' }}</span>
+                            </div>
+                            
+                            <div class="subgroup-content {{ 'show' if subgroup_ns.failed else '' }}" id="{{ group.name }}_{{ subgroup.name }}">
+                                {% if subgroup.devices %}
+                                    {% for device in subgroup.devices %}
+                                        <div class="device">
+                                            <!-- Device Status Processing (your existing logic) -->
+                                            {% set raw_status = device.status | trim | lower %}
+                                            {% set status = raw_status if raw_status in ['pass', 'fail'] else 'na' %}
+                                            
+                                            <div class="device-name">
+                                                <div class="device-border">
+                                                <span> {{ device.name }}</span>
+                                                </div> 
+                                                <span class="{{ 'status-fail' if status == 'fail' else 'status-pass' }}">
+                                                    {{ status | capitalize }}
+                                                </span>
+                                            </div>
+                                            
+                                            <div class="metric">
+                                                <strong>CPU:</strong> {{ device.cpu }}% - 
+                                                <span class="{{ 'status-fail' if device.cpu | int > cpu_threshold else 'status-pass' }}">
+                                                    {% if device.cpu | int > cpu_threshold %}Fail{% else %}Pass{% endif %}
+                                                </span>
+                                            </div>
+                                            
+                                            <div class="metric">
+                                                <strong>Memory:</strong> {{ device.memory }}% - 
+                                                <span class="{{ 'status-fail' if device.memory | int > memory_threshold else 'status-pass' }}">
+                                                    {% if device.memory | int > memory_threshold %}Fail{% else %}Pass{% endif %}
+                                                </span>
+                                            </div>
+                                            
+                                            <div class="metric">
+                                                <strong>Uptime:</strong> {{ device.uptime }} ({{ device.uptime_avail }})
+                                            </div>
+                                            
+                                            <div class="metric">
+                                                <strong>Disk Space:</strong> {{ device.disk_space }}% - 
+                                                <span class="{{ 'status-fail' if device.disk_space | int > disk_threshold else 'status-pass' }}">
+                                                    {% if device.disk_space | int > disk_threshold %}Fail{% else %}Pass{% endif %}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="device">No devices found in this subgroup</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script>
+        function toggleSubgroup(id) {
+            const content = document.getElementById(id);
+            const toggle = content.previousElementSibling;
+            const arrow = toggle.querySelector('span[style*="float: right"]');
+            
+            if (content.classList.contains('show')) {
+                content.classList.remove('show');
+                arrow.textContent = '▼';
+            } else {
+                content.classList.add('show');
+                arrow.textContent = '▲';
+            }
+        }
+
+        function toggleAll() {
+            const contents = document.querySelectorAll('.subgroup-content');
+            const arrows = document.querySelectorAll('.subgroup-toggle span[style*="float: right"]');
+            const isAnyOpen = Array.from(contents).some(content => content.classList.contains('show'));
+            
+            contents.forEach((content, index) => {
+                if (isAnyOpen) {
+                    content.classList.remove('show');
+                    arrows[index].textContent = '▼';
+                } else {
+                    content.classList.add('show');
+                    arrows[index].textContent = '▲';
+                }
+            });
+        }
+    </script>
+</body>
+</html>

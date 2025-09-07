@@ -1,0 +1,191 @@
+---
+- name: Gather EC2 Health Data
+  hosts: all
+  gather_facts: yes
+  vars:
+    cpu_threshold: 80
+    memory_threshold: 70
+    disk_threshold: 21
+
+  tasks:
+    - name: Collect uptime
+      shell: uptime -p
+      register: uptime_result
+
+    - name: Collect disk usage
+      shell: df -h / | awk 'NR==2 {print $5}' | sed 's/%//'
+      register: disk_result
+
+    - name: Set device facts with health status
+      set_fact:
+        device_report:
+          name: "{{ inventory_hostname }}"
+          cpu: "{{ (ansible_processor_cores | default(0)) * (ansible_processor_vcpus | default(0)) }}"
+          memory: "{{ (ansible_memory_mb.real.used * 100) // ansible_memory_mb.real.total }}"
+          uptime: "{{ uptime_result.stdout }}"
+          uptime_avail: "Up"
+          disk_space: "{{ disk_result.stdout | int }}"
+          status: >-
+            {% set cpu_val = (ansible_processor_cores | default(0)) * (ansible_processor_vcpus | default(0)) %}
+            {% set mem_val = (ansible_memory_mb.real.used * 100) // ansible_memory_mb.real.total %}
+            {% set disk_val = disk_result.stdout | int %}
+            {% if cpu_val > cpu_threshold or mem_val > memory_threshold or disk_val > disk_threshold %}
+              Fail
+            {% else %}
+              Pass
+            {% endif %}
+      when: ansible_facts is defined
+
+
+    - name: Aggregate device reports on localhost
+      delegate_to: localhost
+      run_once: true
+      set_fact:
+        all_device_reports: "{{ all_device_reports | default({}) | combine({ inventory_hostname: device_report }) }}"
+
+    - name: Add device report to localhost
+      delegate_to: localhost
+      add_host:
+        name: localhost
+        groups: local_reports
+        all_device_reports: >-
+          {{ hostvars['localhost'].all_device_reports | default({}) | combine({ inventory_hostname: device_report }) }}
+
+    - name: Debug device health evaluation
+      debug:
+        msg: |
+          Host: {{ inventory_hostname }}
+          CPU Value: {{ (ansible_processor_cores | default(0)) * (ansible_processor_vcpus | default(0)) }}
+          Memory Usage (%): {{ (ansible_memory_mb.real.used * 100) // ansible_memory_mb.real.total }}
+          Disk Usage (%): {{ disk_result.stdout | int }}
+          Status: {{ device_report.status }}
+
+
+- name: Generate HTML Report
+  hosts: localhost
+  connection: local
+  gather_facts: yes
+  vars:
+    cpu_threshold: 80
+    memory_threshold: 70
+    disk_threshold: 21
+    subgroup_map:
+      HDC1:
+        AMK_SHS: ["Host1", "Host2"]
+        AMK_NHG: ["Host3"]
+        AMK_CS:  ["Host5"]
+      HDC2:
+        AMK_SHS: ["Host4"]
+        AMK_NHG: ["Host6"]
+        AMK_CS:  ["Host7"]
+
+  tasks:
+    # - name: Add device report to localhost
+    #   set_fact:
+    #     all_device_reports: "{{ all_device_reports | default({}) | combine({ inventory_hostname: device_report }) }}"
+
+
+    - name: Set global report status
+      set_fact:
+        report_status: >-
+          {% set failed = all_device_reports.values()
+              | map(attribute='status')
+              | map('trim')
+              | select('equalto', 'Fail')
+              | list %}
+          {% if failed | length > 0 %}
+            Fail
+          {% else %}
+            Pass
+          {% endif %}
+
+    - name: Show final report status
+      debug:
+        msg: "Overall report status: {{ report_status }}"
+    - name: Build report groups
+      set_fact:
+        report_groups: "{{ _report_groups }}"
+      vars:
+        _report_groups: >-
+          {% set groups = [] %}
+          {% for group_name, subgroups in subgroup_map.items() %}
+            {% set grp_status = 'Pass' %}
+            {% set subs = [] %}
+            {% for sub_name, hosts in subgroups.items() %}
+              {% set devs = hosts | map('extract', hostvars, 'device_report') | list %}
+              {% set sub_status = 'Pass' %}
+              {% if devs | selectattr('status', 'equalto', 'Fail') | list | length > 0 %}
+                {% set sub_status = 'Fail' %}
+                {% set grp_status = 'Fail' %}
+              {% endif %}
+              {% set _ = subs.append({ 'name': sub_name, 'status': sub_status, 'devices': devs }) %}
+            {% endfor %}
+            {% set _ = groups.append({ 'name': group_name, 'status': grp_status, 'subgroups': subs }) %}
+          {% endfor %}
+          {{ groups }}
+
+    - name: Build report structure
+      set_fact:
+        report:
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          groups: >-
+            {%- set groups = [] -%}
+            {%- for group_name, subgroups in subgroup_map.items() -%}
+              {%- set group = {'name': group_name, 'subgroups': []} -%}
+              {%- for subgroup_name, hosts in subgroups.items() -%}
+                {%- set subgroup = {'name': subgroup_name, 'devices': []} -%}
+                {%- for host_name in hosts -%}
+                  {%- if hostvars[host_name] and hostvars[host_name].device_report -%}
+                    {%- set _ = subgroup.devices.append(hostvars[host_name].device_report) -%}
+                  {%- endif -%}
+                {%- endfor -%}
+                {%- set _ = group.subgroups.append(subgroup) -%}
+              {%- endfor -%}
+              {%- set _ = groups.append(group) -%}
+            {%- endfor -%}
+            {{ groups }}
+
+    - name: Determine overall status
+      set_fact:
+        report: "{{ report | combine({'status': overall_status}) }}"
+      vars:
+        overall_status: >-
+          {% set has_failures = false %}
+          {% for group in report.groups %}
+            {% for subgroup in group.subgroups %}
+              {% for device in subgroup.devices %}
+                {% if device.status == 'Fail' %}
+                  {% set has_failures = true %}
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
+          {% endfor %}
+          {{ 'Fail' if has_failures else 'Pass' }}
+
+    - name: Extract host statuses
+      set_fact:
+        host_status_map: >-
+          {% set status_map = {} %}
+          {% for group in report.groups %}
+            {% for subgroup in group.subgroups %}
+              {% for device in subgroup.devices %}
+                {% set _ = status_map.update({ device.name: device.status | trim }) %}
+              {% endfor %}
+            {% endfor %}
+          {% endfor %}
+          {{ status_map }}
+
+
+
+
+
+
+    - name: Render HTML healthcheck report
+      template:
+        src: health_report.j2
+        dest: /tmp/f5_gtm_healthcheck.html
+      vars:
+        report: "{{ report }}"
+        # cpu_threshold: "{{ cpu_threshold }}"
+        # memory_threshold: "{{ memory_threshold }}"
+        # disk_threshold: "{{ disk_threshold }}"
