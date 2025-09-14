@@ -1,0 +1,128 @@
+---
+
+- name: Gather EC2 Health Data
+  hosts: all
+  gather_facts: yes
+  vars:
+    # cpu_threshold: 80
+    # memory_threshold: 70
+    # disk_threshold: 50
+  tasks:
+    - name: Collect uptime
+      shell: uptime -p
+      register: uptime_result
+
+    - name: Collect disk usage
+      shell: df -h / | awk 'NR==2 {print $5}' | sed 's/%//'
+      register: disk_result
+
+    - name: Set device facts with health status
+      set_fact:
+        device_report:
+          name: "{{ inventory_hostname }}"
+          cpu: "{{ (ansible_processor_cores | default(0)) * (ansible_processor_vcpus | default(0)) }}"
+          memory: "{{ (ansible_memory_mb.real.used * 100) // ansible_memory_mb.real.total }}"
+          uptime: "{{ uptime_result.stdout }}"
+          uptime_avail: "Up"
+          disk_space: "{{ disk_result.stdout | int }}"
+          status: >-
+            {% set cpu_val = (ansible_processor_cores | default(0)) * (ansible_processor_vcpus | default(0)) %}
+            {% set mem_val = (ansible_memory_mb.real.used * 100) // ansible_memory_mb.real.total %}
+            {% set disk_val = disk_result.stdout | int %}
+            {% if cpu_val > cpu_threshold or mem_val > memory_threshold or disk_val > disk_threshold %}
+            Fail
+            {% else %}
+            Pass
+            {% endif %}
+      when: ansible_facts is defined
+
+- name: Generate HTML Report
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    # cpu_threshold: 80
+    # memory_threshold: 70
+    # disk_threshold: 50
+    # The zone_cluster_mapping is now loaded from the inventory.yaml file
+    # so we remove it from here.
+
+  tasks:
+    - name: Build device reports dictionary
+      set_fact:
+        all_device_reports: >-
+          {%- set reports = {} -%}
+          {%- for host in groups['all'] -%}
+            {%- if hostvars[host]['device_report'] is defined -%}
+              {%- set _ = reports.update({ host: hostvars[host]['device_report'] }) -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ reports }}
+
+    - name: Set global report status
+      set_fact:
+        report_status: >-
+          {% set failed = all_device_reports.values() | map(attribute='status') | map('trim') | select('equalto', 'Fail') | list %}
+          {% if failed | length > 0 %}
+          Fail
+          {% else %}
+          Pass
+          {% endif %}
+
+    # THIS TASK'S LOGIC DOES NOT CHANGE. It will find the variable from inventory.
+    - name: Build hierarchical report structure from inventory
+      set_fact:
+        report:
+          timestamp: "{{ lookup('pipe', 'date -u +\"%Y-%m-%dT%H:%M:%SZ\"') }}"
+          datacenters: >-
+            {%- set datacenter_list = [] -%}
+            {%- for datacenter in ['HDC1', 'HDC2'] -%}
+              {%- if datacenter in groups -%}
+                {%- set datacenter_data = {'name': datacenter, 'environments': []} -%}
+                {%- for env in ['PROD', 'NON-PROD'] -%}
+                  {%- if env in groups -%}
+                    {%- set env_data = {'name': env, 'zones': []} -%}
+                    {%- if datacenter in zone_cluster_mapping and env in zone_cluster_mapping[datacenter] -%}
+                      {%- for zone_name, app_list in zone_cluster_mapping[datacenter][env].items() -%}
+                        {%- if zone_name in groups -%}
+                          {%- set zone_data = {'name': zone_name, 'clusters': []} -%}
+                          {%- for app_name in app_list -%}
+                            {%- if app_name in groups -%}
+                              {%- set app_data = {'name': app_name, 'devices': []} -%}
+                              {%- for host in groups[app_name] -%}
+                                {%- if host in all_device_reports -%}
+                                  {%- set device = all_device_reports[host] -%}
+                                  {%- set device_enhanced = device | combine({'datacenter': datacenter, 'environment': env, 'zone': zone_name, 'cluster': app_name}) -%}
+                                  {%- set _ = app_data.devices.append(device_enhanced) -%}
+                                {%- endif -%}
+                              {%- endfor -%}
+                              {%- if app_data.devices | length > 0 -%}
+                                {%- set _ = zone_data.clusters.append(app_data) -%}
+                              {%- endif -%}
+                            {%- endif -%}
+                          {%- endfor -%}
+                          {%- if zone_data.clusters | length > 0 -%}
+                            {%- set _ = env_data.zones.append(zone_data) -%}
+                          {%- endif -%}
+                        {%- endif -%}
+                      {%- endfor -%}
+                    {%- endif -%}
+                    {%- if env_data.zones | length > 0 -%}
+                      {%- set _ = datacenter_data.environments.append(env_data) -%}
+                    {%- endif -%}
+                  {%- endif -%}
+                {%- endfor -%}
+                {%- if datacenter_data.environments | length > 0 -%}
+                  {%- set _ = datacenter_list.append(datacenter_data) -%}
+                {%- endif -%}
+              {%- endif -%}
+            {%- endfor -%}
+            {{ datacenter_list }}
+          status: "{{ report_status }}"
+
+    - name: Render HTML healthcheck report
+      template:
+        src: copilot_report.j2
+        dest: /mnt/c/Users/ADMIN/Downloads/f5_gtm_healthcheck.html
+      vars:
+        report: "{{ report }}"
