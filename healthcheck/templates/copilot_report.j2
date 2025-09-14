@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Infrastructure Health Check Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #fff; color: #222; }
+        .header { text-align: center; margin-bottom: 24px; }
+        .header h1 { margin: 0 0 15px 0; }
+        .header-pass { color: #27ae60; }
+        .header-fail { color: #e74c3c; }
+        .status-badge { display: inline-block; padding: 6px 12px; border-radius: 15px; font-weight: 500; margin-left: 8px; font-size: 1em;}
+        .status-pass { background: #e7fae9; color: #27ae60; }
+        .status-fail { background: #fbe9e9; color: #e74c3c; }
+        .statistics-section { border-radius: 8px; margin: 24px auto 30px auto; max-width: 700px; padding: 20px 16px; background: #f8f8f8; border: 1px solid #eee; }
+        .statistics-section h2 { margin: 0 0 16px 0; font-size: 1.25em; font-weight: 600; text-align: center; color: #222; }
+        .stats-grid { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+        .stat-card { flex: 1 0 140px; min-width: 120px; background: #fff; border-radius: 4px; text-align: center; padding: 16px 8px; border: 1px solid #eee;}
+        .stat-title { margin: 0 0 8px 0; font-size: 0.98em; color: #666; }
+        .stat-value { font-size: 1.5em; font-weight: 700; color: #222;}
+        .datacenter-container { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 18px;}
+        .datacenter-box { flex: 1; min-width: 400px; background: #fafafa; border-radius: 8px; border: 1px solid #eee; margin-bottom: 24px;}
+        .datacenter-header { font-weight: 600; padding: 10px 12px; text-align: center; background: #ededed; border-bottom: 1px solid #eee; display: flex; justify-content: center; align-items: center; gap: 8px;}
+        .content-area { padding: 15px;}
+        details { margin: 9px 0; border-radius: 4px; background: #f3f3f3;}
+        summary { font-weight: 600; cursor: pointer; font-size: 1em; padding: 8px 10px;}
+        .details-content { padding: 10px 12px;}
+        .host-summary { background: #f1f1f1 !important; font-weight: 400; margin-left: 20px; border-radius: 4px;}
+        .host-details { background: #fff; border-radius: 4px; padding: 10px; margin: 7px 0; border: 1px solid #ebebeb;}
+        .metric-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dotted #e4e4e4;}
+        .metric-row:last-child { border-bottom: none; }
+        .metric-label { color: #555; }
+        .metric-value { font-weight: 600; border-radius: 4px; padding: 2px 10px;}
+        .metric-pass { color: #27ae60; }
+        .metric-fail { color: #e74c3c; }
+        .metric-up { color: #27ae60; }
+        .metric-neutral { color: #222; }
+        @media (max-width: 800px) { .datacenter-container{flex-direction:column;} .datacenter-box{min-width:100%;}}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="{{ 'header-fail' if report.status == 'Fail' else 'header-pass' }}">F5 Health Check Report</h1>
+        <div>
+<span style="color: {{ 'red' if report.status|trim == 'Fail' else 'green' }}">
+    {{ report.status|trim|upper }}
+</span>
+
+
+        </div>
+        <div style="margin-top:8px;font-size:0.98em;">
+            Generated: {{ report.timestamp }}
+        </div>
+    </div>
+
+    {%- set all_devices = [] -%}
+    {%- for datacenter in report.datacenters -%}
+        {%- for environment in datacenter.environments -%}
+            {%- for zone in environment.zones -%}
+                {%- for cluster in zone.clusters -%}
+                    {%- for device in cluster.devices -%}
+                        {%- set _ = all_devices.append(device) -%}
+                    {%- endfor -%}
+                {%- endfor -%}
+            {%- endfor -%}
+        {%- endfor -%}
+    {%- endfor -%}
+    {%- set total_devices = all_devices|length -%}
+    {%- set failed_devices = all_devices|selectattr('status', 'match', '.*Fail.*')|list -%}
+    {%- set total_failed = failed_devices|length -%}
+    {%- set healthy_devices = total_devices - total_failed -%}
+    {%- set success_rate = (healthy_devices / total_devices * 100) if total_devices > 0 else 0 -%}
+
+    <div class="statistics-section">
+        <h2>Overall Infrastructure Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-title">Total Devices</div><div class="stat-value">{{ total_devices }}</div></div>
+            <div class="stat-card"><div class="stat-title">Healthy</div><div class="stat-value metric-pass">{{ healthy_devices }}</div></div>
+            <div class="stat-card"><div class="stat-title">Failed</div><div class="stat-value metric-fail">{{ total_failed }}</div></div>
+            <div class="stat-card"><div class="stat-title">Success Rate</div><div class="stat-value metric-neutral">{{ "%.1f"|format(success_rate) }}%</div></div>
+        </div>
+    </div>
+
+    <div class="datacenter-container">
+        {% for datacenter in report.datacenters %}
+        {# Calculate datacenter status based on all devices in datacenter #}
+        {% set dc_devices = [] %}
+        {% for environment in datacenter.environments %}
+            {% for zone in environment.zones %}
+                {% for cluster in zone.clusters %}
+                    {% for device in cluster.devices %}
+                        {% set _ = dc_devices.append(device) %}
+                    {% endfor %}
+                {% endfor %}
+            {% endfor %}
+        {% endfor %}
+        {% set dc_failed = dc_devices | selectattr('status', 'match', '.*Fail.*') | list %}
+        {% set dc_status = 'Fail' if dc_failed | length > 0 else 'Pass' %}
+
+        <div class="datacenter-box">
+            <div class="datacenter-header">
+                <span>{{ datacenter.name }} </span>
+                <span class="status-badge {{ 'status-fail' if dc_status == 'Fail' else 'status-pass' }}">{{ dc_status }}</span>
+            </div>
+            <div class="content-area">
+                {% for environment in datacenter.environments %}
+                {% set env_devices = [] %}
+                {% for zone in environment.zones %}
+                    {% for cluster in zone.clusters %}
+                        {% for device in cluster.devices %}
+                            {% set _ = env_devices.append(device) %}
+                        {% endfor %}
+                    {% endfor %}
+                {% endfor %}
+                {% set env_failed = env_devices | selectattr('status', 'match', '.*Fail.*') | list %}
+                {% set env_status = 'Fail' if env_failed | length > 0 else 'Pass' %}
+
+                    <summary>
+                        {{ environment.name }}
+                        <span class="status-badge {{ 'status-fail' if env_status == 'Fail' else 'status-pass' }}">{{ env_status }}</span>
+                    </summary>
+                    <div class="details-content">
+                        {% for zone in environment.zones %}
+                        {% set zone_devices = [] %}
+                        {% for cluster in zone.clusters %}
+                            {% for device in cluster.devices %}
+                                {% set _ = zone_devices.append(device) %}
+                            {% endfor %}
+                        {% endfor %}
+                        {% set zone_failed = zone_devices | selectattr('status', 'match', '.*Fail.*') | list %}
+                        {% set zone_status = 'Fail' if zone_failed | length > 0 else 'Pass' %}
+                        <details {{ 'open' if zone_status == 'Fail' else '' }}>
+                            <summary>
+                                {{ zone.name }} Zone
+                                <span class="status-badge {{ 'status-fail' if zone_status == 'Fail' else 'status-pass' }}">{{ zone_status }}</span>
+                            </summary>
+                            <div class="details-content">
+                                {% for cluster in zone.clusters %}
+                                {% set cluster_failed = cluster.devices | selectattr('status', 'match', '.*Fail.*') | list %}
+                                {% set cluster_status = 'Fail' if cluster_failed | length > 0 else 'Pass' %}
+                                <details {{ 'open' if cluster_status == 'Fail' else '' }}>
+                                    <summary>
+                                        {{ cluster.name }}
+                                        <span class="status-badge {{ 'status-fail' if cluster_status == 'Fail' else 'status-pass' }}">{{ cluster_status }}</span>
+                                    </summary>
+                                    <div class="details-content">
+                                        {% if cluster.devices %}
+                                        {% for device in cluster.devices %}
+                                        <details {{ 'open' if 'Fail' in device.status else '' }}>
+                                            <summary class="host-summary">
+                                                {{ device.name }}
+                                                <span class="{{ 'metric-fail' if 'Fail' in device.status else 'metric-pass' }}">
+                                                    {{ device.status.strip().upper() }}
+                                                </span>
+                                            </summary>
+                                            <div class="host-details">
+                                                <div class="metric-row">
+                                                    <span class="metric-label">CPU Usage</span>
+                                                    <span class="metric-value {{ 'metric-fail' if (device.cpu|int) > 80 else 'metric-pass' }}">{{ device.cpu }}%</span>
+                                                </div>
+                                                <div class="metric-row">
+                                                    <span class="metric-label">Memory Usage</span>
+                                                    <span class="metric-value {{ 'metric-fail' if (device.memory|int) > 70 else 'metric-pass' }}">{{ device.memory }}%</span>
+                                                </div>
+                                                <div class="metric-row">
+                                                    <span class="metric-label">Disk Usage</span>
+                                                    <span class="metric-value {{ 'metric-fail' if (device.disk_space|int) > 21 else 'metric-pass' }}">{{ device.disk_space }}%</span>
+                                                </div>
+                                                <div class="metric-row">
+                                                    <span class="metric-label">Uptime</span>
+                                                    <span class="metric-value metric-neutral">{{ device.uptime }}</span>
+                                                </div>
+                                                <div class="metric-row">
+                                                    <span class="metric-label">Availability</span>
+                                                    <span class="metric-value metric-up">{{ device.uptime_avail }}</span>
+                                                </div>
+                                            </div>
+                                        </details>
+                                        {% endfor %}
+                                        {% else %}
+                                        <div style="color:#e74c3c;font-weight:600;">
+                                            No devices found in this cluster
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </details>
+                                {% endfor %}
+                            </div>
+                        </details>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div style="text-align: center; margin: 28px 0 0 0; font-size: 0.95em; color: #666;">
+        Health Check Report | Generated on {{ report.timestamp }} |
+        Thresholds: CPU: 80%, Memory: 70%, Disk: 21%
+    </div>
+</body>
+</html>
