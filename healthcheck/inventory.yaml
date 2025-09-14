@@ -1,39 +1,121 @@
 all:
+  vars: # <--- ADD THIS VARS SECTION
+    cpu_threshold: 80
+    memory_threshold: 70
+    disk_threshold: 25
+    zone_cluster_mapping:
+      HDC1:
+        PROD:
+          INZ: ['PR', 'WSA']
+          TSZ: []
+        NON-PROD:
+          INZ: ['PR', 'WSA']
+          TSZ: ['SHS']
+      HDC2:
+        PROD:
+          INZ: []
+          TSZ: ['SHS', 'CS', 'NNA', 'PAM']
+        NON-PROD:
+          INZ: ['PR']
+          TSZ: ['']
   children:
     HDC1:
       children:
-        AMK_SHS:
-          hosts:
-            Host1:
-              ansible_host: 13.233.165.166
-              ansible_user: ec2-user
-            Host2:
-              ansible_host: 13.229.249.134
-              ansible_user: ec2-user
-        AMK_NHG:
-          hosts:
-            Host3:
-              ansible_host: 13.233.165.166
-              ansible_user: ec2-user
-        AMK_CS:
-          hosts:
-            Host5:
-              ansible_host: 13.233.165.166
-              ansible_user: ec2-user
+        PROD:
+          children:
+            INZ:
+              children:
+                PR:
+                  hosts:
+                    Host1:
+                      ansible_host: 13.233.216.76
+                      ansible_user: ec2-user
+                    Host2:
+                      ansible_host: 43.204.25.232
+                      ansible_user: ec2-user
+                WSA:
+                  hosts:
+                    Host3:
+                      ansible_host: 13.233.216.76
+                      ansible_user: ec2-user
+            TSZ:
+              children:
+                PR:
+                  hosts:
+                    Host1:
+                      ansible_host: 13.233.216.76
+                      ansible_user: ec2-user
+                    Host2:
+                      ansible_host: 13.250.98.228
+                      ansible_user: ec2-user
+                WSA:
+                  hosts:
+                    Host3:
+                      ansible_host: 13.233.216.76
+                      ansible_user: ec2-user
+        NON-PROD:
+          children:
+            INZ:
+              children:
+                PR:
+                  hosts:
+                    Host2:
+                      ansible_host: 13.250.98.228
+                      ansible_user: ec2-user
+                WSA:
+                  hosts:
+                    Host3:
+                      ansible_host: 13.233.216.76
+                      ansible_user: ec2-user
+            TSZ:
+              children:
+                SHS:
+                  hosts:
+                    Host4:
+                      ansible_host: 13.250.98.228
+                      ansible_user: ec2-user
+                    Host5:
+                      ansible_host: 13.233.216.76
+                      ansible_user: ec2-user
     HDC2:
       children:
-        AMK_SHS:
-          hosts:
-            Host4:
-              ansible_host: 13.233.165.166
-              ansible_user: ec2-user
-        AMK_NHG:
-          hosts:
-            Host6:
-              ansible_host: 13.233.165.166
-              ansible_user: ec2-user
-        AMK_CS:
-          hosts:
-            Host7:
-              ansible_host: 13.233.165.166
-              ansible_user: ec2-user
+        PROD:
+          children:
+            TSZ:
+              children:
+                SHS:
+                  hosts:
+                    Host4:
+                      ansible_host: 13.250.98.228
+                      ansible_user: ec2-user
+                    Host5:
+                      ansible_host: 13.233.216.76
+                      ansible_user: ec2-user
+                CS:
+                  hosts:
+                    Host6:
+                      ansible_host: 13.250.98.228
+                      ansible_user: ec2-user
+                NNA:
+                  hosts:
+                    Host7:
+                      ansible_host: 13.233.216.76
+                      ansible_user: ec2-user
+                PAM:
+                  hosts:
+                    Host8:
+                      ansible_host: 13.250.98.228
+                      ansible_user: ec2-user
+
+        NON-PROD:
+          children:
+            INZ:
+              children:
+                PR:
+                  hosts:
+                    Host11:
+                      ansible_host: 13.233.216.76
+                      ansible_user: ec2-user
+                    Host12:
+                      ansible_host: 13.250.98.228
+                      ansible_user: ec2-user
