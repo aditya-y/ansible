@@ -1,0 +1,125 @@
+---
+all:
+  vars:
+    ansible_command_timeout: 180
+    ansible_connection: network_cli
+    ansible_network_os: nxos
+    ansible_port: 22
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+    host_key_checking: false
+    transport: cli
+    validate_certs: false  
+  children:
+    DC1:
+      children:
+        DC1_PRD:
+          children:
+            DC1_PRD_INZ:
+              children:
+                DC1_PRD_INZ_PR:
+                  hosts:
+                    F-BKP-HIS-SWE71:
+                      ansible_host: 10.0.0.1
+                DC1_PRD_INZ_WSA:
+                  hosts:
+                    F-BKP-HIS-SWE43:
+                      ansible_host: 10.0.0.0                     
+            DC1_PRD_TSZ:
+              children:
+                DC1_PRD_TSZ_SHS:
+                  hosts:
+                    F-BKP-HIS-SWE41:
+                      ansible_host: 10.247.34.219 
+                  hosts:
+                    F-BKP-HIS-SWE42:
+                      ansible_host: 10.247.34.220                     
+                DC1_PRD_TSZ_CS:
+                  hosts:
+                    F-BKP-HIS-SWE462:
+                      ansible_host: 10.0.0.0 
+                DC1_PRD_TSZ_NNA:
+                  hosts:
+                    F-BKP-HIS-SWE63:
+                      ansible_host: 10.0.0.0                   
+        DC1_STG:
+          children:
+            DC1_STG_INZ:
+              children:
+                DC1_STG_INZ_PR:
+                  hosts:
+                    F-BKP-HIS-SWE47:
+                      ansible_host: 10.247.34.219                      
+                DC1_STG_INZ_WSA:
+                  hosts:
+                    F-BKP-HIS-SWE48:
+                      ansible_host: 10.0.0.0                      
+            DC1_STG_TSZ:
+              children:
+                DC1_STG_TSZ_CS:
+                  hosts:
+                    F-BKP-HIS-SWE50:
+                      ansible_host: 10.0.0.0
+                DC1_STG_TSZ_NNA:
+                  hosts:
+                    F-BKP-HIS-SWE51:
+                      ansible_host: 10.0.0.0
+                DC1_STG_TSZ_PAM:
+                  hosts:
+                    F-BKP-HIS-SWE52:
+                      ansible_host: 10.0.0.0
+
+####################################################DC2#############################################
+
+    DC2:
+      children:
+        DC2_PRD:
+          children:
+            DC2_PRD_INZ:
+              children:
+                DC2_PRD_INZ_PR:
+                  hosts:
+                    F-BKP-HIS-SWE31:
+                      ansible_host: 10.247.34.220                     
+                DC2_PRD_INZ_WSA:
+                  hosts:
+                    F-BKP-HIS-SWE32:
+                      ansible_host: 10.247.34.219                    
+            DC2_PRD_TSZ:
+              children:
+                DC2_PRD_TSZ_SHS:
+                  hosts:
+                    F-BKP-HIS-SWE33:
+                      ansible_host: 10.247.34.219               
+        DC2_STG:
+          children:
+            DC2_STG_INZ:
+              children:
+                DC2_STG_INZ_WSA:
+                  hosts:
+                    F-BKP-HIS-SWE34:
+                      ansible_host: 10.247.34.220  
+                      
+
+    # Add only the specific orthogonal groups you use
+    PRD:
+      children:
+        - DC1_PRD
+        - DC2_PRD
+        
+    STG:
+      children:
+        - DC1_STG
+        - DC2_STG
+        
+    INZ:
+      children:
+        - DC1_PRD_INZ
+        - DC1_STG_INZ
+        - DC2_PRD_INZ
+        - DC2_STG_INZ
+        
+    TSZ:
+      children:
+        - DC1_PRD_TSZ
+        - DC1_STG_TSZ
+        - DC2_PRD_TSZ
